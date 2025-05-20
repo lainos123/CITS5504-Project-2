@@ -11,6 +11,9 @@ CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.personId IS U
 CREATE CONSTRAINT location_id IF NOT EXISTS FOR (l:Location) REQUIRE l.locationId IS UNIQUE;
 CREATE CONSTRAINT dateTime_id IF NOT EXISTS FOR (d:DateTime) REQUIRE d.dateTimeId IS UNIQUE;
 
+DATA LOAD
+------------------------------------------------------------------------------------
+
 // Import Crash nodes
 LOAD CSV WITH HEADERS FROM 'file:///crash_nodes.csv' AS row
 CREATE (c:Crash {
@@ -58,9 +61,6 @@ MERGE (d:DateTime {
   easterPeriod: row.easterPeriod
 });
 
-DATA LOAD
-------------------------------------------------------------------------------------
-
 // Create Person-Crash relationships (INVOLVED_IN)
 LOAD CSV WITH HEADERS FROM 'file:///person_crash_rel.csv' AS row
 MATCH (p:Person {personId: row.personId})
@@ -93,3 +93,151 @@ CREATE INDEX person_road_user_idx IF NOT EXISTS FOR (p:Person) ON (p.roadUser);
 Cypher Queries
 ====================================================================================
 
+// Question A: Crashes in WA with articulated trucks and multiple fatalities
+MATCH (c:Crash {articulatedTruckInvolvement: 'Yes'})-[:OCCURED_AT]->(l:Location {state: 'WA'})
+WHERE toInteger(c.numberFatalities) > 1
+MATCH (p:Person)-[:INVOLVED_IN]->(c)
+MATCH (c)-[:HAPPENED_AT]->(dt:DateTime)
+WHERE toInteger(dt.year) >= 2020 AND toInteger(dt.year) <= 2024
+RETURN p.roadUser, p.age, p.gender, l.lgaName, dt.month, dt.year, c.numberFatalities
+ORDER BY dt.year, dt.month;
+
+// Question B: Age ranges for motorcycle riders in fatal crashes during holidays
+MATCH (p:Person {roadUser: 'Motorcycle rider'})-[:INVOLVED_IN]->(c:Crash)
+MATCH (c)-[:OCCURED_AT]->(l:Location {nationalRemoteAreas: 'Inner Regional Australia'})
+MATCH (c)-[:HAPPENED_AT]->(dt:DateTime)
+WHERE dt.christmasPeriod = 'Yes' OR dt.easterPeriod = 'Yes'
+RETURN p.gender, MAX(toInteger(p.age)) as maxAge, MIN(toInteger(p.age)) as minAge
+ORDER BY p.gender;
+
+// Question C: Young drivers in fatal crashes on weekends vs. weekdays
+MATCH (p:Person {ageGroup: '17_to_25'})-[:INVOLVED_IN]->(c:Crash)
+MATCH (c)-[:OCCURED_AT]->(l:Location)
+MATCH (c)-[:HAPPENED_AT]->(dt:DateTime)
+WHERE toInteger(dt.year) = 2024
+WITH l.state AS state, 
+     SUM(CASE WHEN dt.weekdayOrWeekend = 'Weekend' THEN 1 ELSE 0 END) AS weekends,
+     SUM(CASE WHEN dt.weekdayOrWeekend = 'Weekday' THEN 1 ELSE 0 END) AS weekdays,
+     AVG(toInteger(p.age)) AS avgAge
+RETURN state, weekends, weekdays, avgAge
+ORDER BY state;
+
+// Question D: Friday crashes in WA with multiple deaths and mixed gender victims
+MATCH (c:Crash)-[:OCCURED_AT]->(l:Location {state: 'WA'})
+MATCH (c)-[:HAPPENED_AT]->(dt:DateTime {dayOfWeek: 'Friday', weekdayOrWeekend: 'Weekend'})
+WHERE toInteger(c.numberFatalities) > 1
+WITH c, l
+MATCH (maleVictim:Person {gender: 'Male'})-[:INVOLVED_IN]->(c)
+MATCH (femaleVictim:Person {gender: 'Female'})-[:INVOLVED_IN]->(c)
+RETURN DISTINCT l.sa4Name, l.nationalRemoteAreas, l.nationalRoadType;
+
+// Question E: Top 5 SA4 regions with fatal crashes during peak hours
+MATCH (c:Crash)-[:OCCURED_AT]->(l:Location)
+MATCH (c)-[:HAPPENED_AT]->(dt:DateTime)
+WITH c, l, dt,
+     CASE 
+       WHEN toInteger(split(dt.time, ':')[0]) >= 7 AND 
+            toInteger(split(dt.time, ':')[0]) <= 9 
+       THEN 'Morning Peak'
+       WHEN toInteger(split(dt.time, ':')[0]) >= 16 AND 
+            toInteger(split(dt.time, ':')[0]) <= 18 
+       THEN 'Afternoon Peak'
+       ELSE 'Off Peak' 
+     END AS peakTime
+WHERE peakTime <> 'Off Peak'
+WITH c, l.sa4Name AS region, peakTime
+WITH region, peakTime, COUNT(c) AS crashCount
+ORDER BY crashCount DESC
+WITH region, 
+     SUM(CASE WHEN peakTime = 'Morning Peak' THEN crashCount ELSE 0 END) AS morningPeakCrashes,
+     SUM(CASE WHEN peakTime = 'Afternoon Peak' THEN crashCount ELSE 0 END) AS afternoonPeakCrashes,
+     SUM(crashCount) AS totalPeakCrashes
+ORDER BY totalPeakCrashes DESC
+LIMIT 5
+RETURN region, morningPeakCrashes AS `Morning Peak`, afternoonPeakCrashes AS `Afternoon Peak`;
+
+// Question F: Paths of length 3 between LGAs
+MATCH path = (start:Location)-[*3]-(end:Location)
+WHERE start.lgaName <> end.lgaName
+RETURN start.lgaName AS startLGA, end.lgaName AS endLGA, path
+ORDER BY startLGA, endLGA
+LIMIT 3;
+
+// Question G (CITS5504 ONLY): Weekday fatal crashes involving pedestrians
+MATCH (p:Person {roadUser: 'Pedestrian'})-[:INVOLVED_IN]->(c:Crash)
+WHERE (c.busInvolvement = 'Yes' OR c.heavyRigidTruckInvolvement = 'Yes')
+  AND (toInteger(c.speedLimit) < 40 OR toInteger(c.speedLimit) >= 100)
+MATCH (c)-[:HAPPENED_AT]->(dt:DateTime {weekdayOrWeekend: 'Weekday'})
+WITH dt.timeOfDay AS timeOfDay, 
+     p.ageGroup AS ageGroup,
+     CASE 
+       WHEN c.busInvolvement = 'Yes' THEN 'Bus'
+       ELSE 'Heavy Rigid Truck'
+     END AS vehicleType,
+     c.speedLimit AS speedLimit,
+     COUNT(c) AS crashCount
+RETURN timeOfDay, ageGroup, vehicleType, crashCount, speedLimit
+ORDER BY timeOfDay ASC, ageGroup ASC;
+
+// Additional Meaningful Query 1: Most dangerous times of day for elderly drivers
+MATCH (p:Person {roadUser: 'Driver'})-[:INVOLVED_IN]->(c:Crash)
+WHERE p.ageGroup IN ['65_to_74', '75_plus']
+MATCH (c)-[:OCCURED_AT]->(l:Location)
+MATCH (c)-[:HAPPENED_AT]->(dt:DateTime)
+WITH 
+  dt.timeOfDay AS timeOfDay,
+  CASE
+    WHEN l.nationalRemoteAreas IN ['Major Cities of Australia'] THEN 'Urban'
+    ELSE 'Rural'
+  END AS areaType,
+  COUNT(c) AS crashCount
+RETURN timeOfDay, areaType, crashCount
+ORDER BY areaType, crashCount DESC;
+
+// Additional Meaningful Query 2: Speed limits and fatality rates
+MATCH (p:Person)-[:INVOLVED_IN]->(c:Crash)
+MATCH (c)-[:HAPPENED_AT]->(dt:DateTime)
+WHERE toInteger(dt.year) >= 2022 AND toInteger(dt.year) <= 2024
+WITH 
+  p.roadUser AS roadUserType,
+  CASE
+    WHEN toInteger(c.speedLimit) <= 60 THEN 'Low Speed (≤60 km/h)'
+    WHEN toInteger(c.speedLimit) <= 90 THEN 'Medium Speed (61-90 km/h)'
+    ELSE 'High Speed (>90 km/h)'
+  END AS speedCategory,
+  AVG(toInteger(c.numberFatalities)) AS avgFatalities,
+  COUNT(c) AS crashCount
+RETURN roadUserType, speedCategory, avgFatalities, crashCount
+ORDER BY roadUserType, speedCategory;
+
+// Additional Meaningful Query 3: Road type analysis with vehicle involvement and speed limits
+MATCH (c:Crash)-[:OCCURED_AT]->(l:Location)
+MATCH (c)-[:HAPPENED_AT]->(dt:DateTime)
+WHERE toInteger(dt.year) >= 2020
+WITH 
+  l.nationalRoadType AS roadType,
+  CASE
+    WHEN toInteger(c.speedLimit) <= 50 THEN 'Low (≤50 km/h)'
+    WHEN toInteger(c.speedLimit) <= 80 THEN 'Medium (51-80 km/h)'
+    WHEN toInteger(c.speedLimit) <= 110 THEN 'High (81-110 km/h)'
+    ELSE 'Very High (>110 km/h)'
+  END AS speedCategory,
+  CASE
+    WHEN c.busInvolvement = 'Yes' AND c.heavyRigidTruckInvolvement = 'Yes' THEN 'Both Bus and Truck'
+    WHEN c.busInvolvement = 'Yes' THEN 'Bus Only'
+    WHEN c.heavyRigidTruckInvolvement = 'Yes' THEN 'Truck Only'
+    WHEN c.articulatedTruckInvolvement = 'Yes' THEN 'Articulated Truck'
+    ELSE 'Other Vehicles'
+  END AS vehicleType,
+  COUNT(c) AS crashCount,
+  AVG(toInteger(c.numberFatalities)) AS avgFatalities
+RETURN 
+  roadType,
+  speedCategory,
+  vehicleType,
+  crashCount,
+  ROUND(avgFatalities, 2) AS averageFatalities,
+  ROUND(100.0 * crashCount / SUM(crashCount) OVER (PARTITION BY roadType), 2) AS percentageOfRoadType
+ORDER BY 
+  roadType,
+  crashCount DESC;

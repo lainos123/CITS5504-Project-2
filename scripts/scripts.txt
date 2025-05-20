@@ -1,0 +1,95 @@
+====================================================================================
+Neo4j Import Commands
+====================================================================================
+
+DATA CREATION
+------------------------------------------------------------------------------------
+
+// Create constraints for unique IDs
+CREATE CONSTRAINT crash_id IF NOT EXISTS FOR (c:Crash) REQUIRE c.crashId IS UNIQUE;
+CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.personId IS UNIQUE;
+CREATE CONSTRAINT location_id IF NOT EXISTS FOR (l:Location) REQUIRE l.locationId IS UNIQUE;
+CREATE CONSTRAINT dateTime_id IF NOT EXISTS FOR (d:DateTime) REQUIRE d.dateTimeId IS UNIQUE;
+
+// Import Crash nodes
+LOAD CSV WITH HEADERS FROM 'file:///crash_nodes.csv' AS row
+CREATE (c:Crash {
+  crashId: row.crashId,
+  crashType: row.crashType,
+  numberFatalities: toInteger(row.numberFatalities),
+  busInvolvement: row.busInvolvement,
+  heavyRigidTruckInvolvement: row.heavyRigidTruckInvolvement,
+  articulatedTruckInvolvement: row.articulatedTruckInvolvement,
+  speedLimit: toInteger(row.speedLimit)
+});
+
+// Import Person nodes
+LOAD CSV WITH HEADERS FROM 'file:///person_nodes.csv' AS row
+CREATE (p:Person {
+  personId: row.personId,
+  roadUser: row.roadUser,
+  gender: row.gender,
+  age: toInteger(row.age),
+  ageGroup: row.ageGroup
+});
+
+// Import Location nodes
+LOAD CSV WITH HEADERS FROM 'file:///location_nodes.csv' AS row
+MERGE (l:Location {
+  locationId: row.locationId,
+  state: row.state,
+  nationalRemoteAreas: row.nationalRemoteAreas,
+  sa4Name: row.sa4Name,
+  lgaName: row.lgaName,
+  nationalRoadType: row.nationalRoadType
+});
+
+// Import DateTime nodes
+LOAD CSV WITH HEADERS FROM 'file:///dateTime_nodes.csv' AS row
+MERGE (d:DateTime {
+  dateTimeId: row.dateTimeId,
+  month: toInteger(row.month),
+  year: toInteger(row.year),
+  dayOfWeek: row.dayOfWeek,
+  time: row.time,
+  timeOfDay: row.timeOfDay,
+  weekdayOrWeekend: row.weekdayOrWeekend,
+  christmasPeriod: row.christmasPeriod,
+  easterPeriod: row.easterPeriod
+});
+
+DATA LOAD
+------------------------------------------------------------------------------------
+
+// Create Person-Crash relationships (INVOLVED_IN)
+LOAD CSV WITH HEADERS FROM 'file:///person_crash_rel.csv' AS row
+MATCH (p:Person {personId: row.personId})
+MATCH (c:Crash {crashId: row.crashId})
+CREATE (p)-[:INVOLVED_IN]->(c);
+
+// Create Crash-Location relationships (OCCURED_AT)
+LOAD CSV WITH HEADERS FROM 'file:///crash_location_rel.csv' AS row
+MATCH (c:Crash {crashId: row.crashId})
+MATCH (l:Location {locationId: row.locationId})
+CREATE (c)-[:OCCURED_AT]->(l);
+
+// Create Crash-DateTime relationships (HAPPENED_AT)
+LOAD CSV WITH HEADERS FROM 'file:///crash_dateTime_rel.csv' AS row
+MATCH (c:Crash {crashId: row.crashId})
+MATCH (d:DateTime {dateTimeId: row.dateTimeId})
+CREATE (c)-[:HAPPENED_AT]->(d);
+
+// Create indexes for better performance
+CREATE INDEX crash_speed_idx IF NOT EXISTS FOR (c:Crash) ON (c.speedLimit);
+CREATE INDEX crash_articulated_idx IF NOT EXISTS FOR (c:Crash) ON (c.articulatedTruckInvolvement);
+CREATE INDEX crash_fatalities_idx IF NOT EXISTS FOR (c:Crash) ON (c.numberFatalities);
+CREATE INDEX location_state_idx IF NOT EXISTS FOR (l:Location) ON (l.state);
+CREATE INDEX dateTime_year_idx IF NOT EXISTS FOR (d:DateTime) ON (d.year);
+CREATE INDEX person_age_group_idx IF NOT EXISTS FOR (p:Person) ON (p.ageGroup);
+CREATE INDEX person_road_user_idx IF NOT EXISTS FOR (p:Person) ON (p.roadUser);
+
+
+====================================================================================
+Cypher Queries
+====================================================================================
+

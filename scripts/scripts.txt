@@ -23,7 +23,8 @@ CREATE (c:Crash {
   busInvolvement: row.busInvolvement,
   heavyRigidTruckInvolvement: row.heavyRigidTruckInvolvement,
   articulatedTruckInvolvement: row.articulatedTruckInvolvement,
-  speedLimit: toInteger(row.speedLimit)
+  speedLimit: toInteger(row.speedLimit),
+  nationalRoadType: row.nationalRoadType
 });
 
 // Import Person nodes
@@ -43,8 +44,7 @@ MERGE (l:Location {
   state: row.state,
   nationalRemoteAreas: row.nationalRemoteAreas,
   sa4Name: row.sa4Name,
-  lgaName: row.lgaName,
-  nationalRoadType: row.nationalRoadType
+  lgaName: row.lgaName
 });
 
 // Import DateTime nodes
@@ -83,7 +83,9 @@ CREATE (c)-[:HAPPENED_AT]->(d);
 CREATE INDEX crash_speed_idx IF NOT EXISTS FOR (c:Crash) ON (c.speedLimit);
 CREATE INDEX crash_articulated_idx IF NOT EXISTS FOR (c:Crash) ON (c.articulatedTruckInvolvement);
 CREATE INDEX crash_fatalities_idx IF NOT EXISTS FOR (c:Crash) ON (c.numberFatalities);
+CREATE INDEX crash_road_type_idx IF NOT EXISTS FOR (c:Crash) ON (c.nationalRoadType);
 CREATE INDEX location_state_idx IF NOT EXISTS FOR (l:Location) ON (l.state);
+CREATE INDEX location_lga_idx IF NOT EXISTS FOR (l:Location) ON (l.lgaName);
 CREATE INDEX dateTime_year_idx IF NOT EXISTS FOR (d:DateTime) ON (d.year);
 CREATE INDEX person_age_group_idx IF NOT EXISTS FOR (p:Person) ON (p.ageGroup);
 CREATE INDEX person_road_user_idx IF NOT EXISTS FOR (p:Person) ON (p.roadUser);
@@ -129,7 +131,7 @@ WHERE toInteger(c.numberFatalities) > 1
 WITH c, l
 MATCH (maleVictim:Person {gender: 'Male'})-[:INVOLVED_IN]->(c)
 MATCH (femaleVictim:Person {gender: 'Female'})-[:INVOLVED_IN]->(c)
-RETURN DISTINCT l.sa4Name, l.nationalRemoteAreas, l.nationalRoadType;
+RETURN DISTINCT l.sa4Name, l.nationalRemoteAreas, c.nationalRoadType;
 
 // Question E: Top 5 SA4 regions with fatal crashes during peak hours
 MATCH (c:Crash)-[:OCCURED_AT]->(l:Location)
@@ -156,7 +158,7 @@ ORDER BY totalPeakCrashes DESC
 LIMIT 5
 RETURN region, morningPeakCrashes AS `Morning Peak`, afternoonPeakCrashes AS `Afternoon Peak`;
 
-// Question F: Paths of length 3 between LGAs
+// Question F: Paths of length 3 between LGAs 
 MATCH path = (start:Location)-[*3]-(end:Location)
 WHERE start.lgaName <> end.lgaName
 RETURN start.lgaName AS startLGA, end.lgaName AS endLGA, path
@@ -215,7 +217,7 @@ MATCH (c:Crash)-[:OCCURED_AT]->(l:Location)
 MATCH (c)-[:HAPPENED_AT]->(dt:DateTime)
 WHERE toInteger(dt.year) >= 2020
 WITH 
-  l.nationalRoadType AS roadType,
+  c.nationalRoadType AS roadType,
   CASE
     WHEN toInteger(c.speedLimit) <= 50 THEN 'Low (≤50 km/h)'
     WHEN toInteger(c.speedLimit) <= 80 THEN 'Medium (51-80 km/h)'

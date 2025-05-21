@@ -17,8 +17,9 @@ print(f"Found {len(df)} records")
 # Create unique IDs for nodes
 print("Creating unique IDs for nodes...")
 df['personId'] = df['ID'].astype(str)  # Using the original ID as personId
-df['locationId'] = df['Crash ID'].astype(str) + '_' + df['State'] + '_' + df['National Remoteness Areas'] + '_' + df['SA4 Name 2021'] + '_' + df['National LGA Name 2024'] + '_' + df['National Road Type']
-df['dateTimeId'] = df['Crash ID'].astype(str) + '_' + df['Month'].astype(str) + '_' + df['Year'].astype(str) + '_' + df['Time']
+# Moved National Road Type out of locationId
+df['locationId'] = df['State'] + '_' + df['National Remoteness Areas'] + '_' + df['SA4 Name 2021'] + '_' + df['National LGA Name 2024']
+df['dateTimeId'] = df['Month'].astype(str) + '_' + df['Year'].astype(str) + '_' + df['Time']
 
 # Prepare dataframes for each node type
 print("Preparing node dataframes...")
@@ -30,9 +31,10 @@ print(f"Created person nodes dataframe with {len(person_df)} records")
 # Crash nodes
 crash_df = df[['Crash ID', 'Crash Type', 'Number Fatalities', 'Bus Involvement', 
                'Heavy Rigid Truck Involvement', 'Articulated Truck Involvement', 
-               'Speed Limit']].copy()
+               'Speed Limit', 'National Road Type']].copy()
 crash_df.columns = ['crashId', 'crashType', 'numberFatalities', 'busInvolvement', 
-                    'heavyRigidTruckInvolvement', 'articulatedTruckInvolvement', 'speedLimit']
+                    'heavyRigidTruckInvolvement', 'articulatedTruckInvolvement', 
+                    'speedLimit', 'nationalRoadType']
 
 # Remove duplicates to ensure unique crash nodes
 crash_df = crash_df.drop_duplicates(subset=['crashId'])
@@ -40,9 +42,9 @@ print(f"Created crash nodes dataframe with {len(crash_df)} unique records")
 
 # Location nodes
 location_df = df[['locationId', 'State', 'National Remoteness Areas', 'SA4 Name 2021', 
-                  'National LGA Name 2024', 'National Road Type', 'Crash ID']].copy()
+                  'National LGA Name 2024', 'Crash ID']].copy()
 location_df.columns = ['locationId', 'state', 'nationalRemoteAreas', 'sa4Name', 
-                       'lgaName', 'nationalRoadType', 'crashId']
+                       'lgaName', 'crashId']
 
 # Remove duplicates to ensure unique location nodes
 location_df = location_df.drop_duplicates(subset=['locationId'])
@@ -58,11 +60,6 @@ dateTime_df.columns = ['dateTimeId', 'month', 'year', 'dayOfWeek', 'time', 'time
 dateTime_df = dateTime_df.drop_duplicates(subset=['dateTimeId'])
 print(f"Created datetime nodes dataframe with {len(dateTime_df)} unique records")
 
-print("Updating location and datetime IDs...")
-# update locationId and dateTimeId to remove creashId and then redrop duplicates
-location_df['locationId'] = location_df['state'] + '_' + location_df['nationalRemoteAreas'] + '_' + location_df['sa4Name'] + '_' + location_df['lgaName'] + '_' + location_df['nationalRoadType']
-dateTime_df['dateTimeId'] = dateTime_df['month'].astype(str) + '_' + dateTime_df['year'].astype(str) + '_' + dateTime_df['time']
-
 # Prepare relationship dataframes
 print("Preparing relationship dataframes...")
 # For INVOLVED_IN relationship - Person to Crash
@@ -70,17 +67,16 @@ person_crash_rel = person_df[['personId', 'crashId']].copy()
 print(f"Created person-crash relationships with {len(person_crash_rel)} records")
 
 # For OCCURED_AT relationship - Crash to Location
-crash_location_rel = location_df[['crashId', 'locationId']].copy()
+crash_location_rel = df[['Crash ID', 'locationId']].copy()
+crash_location_rel.columns = ['crashId', 'locationId']
+crash_location_rel = crash_location_rel.drop_duplicates()
 print(f"Created crash-location relationships with {len(crash_location_rel)} records")
 
 # For HAPPENED_AT relationship - Crash to DateTime
-crash_dateTime_rel = dateTime_df[['crashId', 'dateTimeId']].copy()
+crash_dateTime_rel = df[['Crash ID', 'dateTimeId']].copy()
+crash_dateTime_rel.columns = ['crashId', 'dateTimeId']
+crash_dateTime_rel = crash_dateTime_rel.drop_duplicates()
 print(f"Created crash-datetime relationships with {len(crash_dateTime_rel)} records")
-
-# drop duplicates from location_df and dateTime_df now that we have removed crashId from the locationId and dateTimeId
-location_df = location_df.drop_duplicates(subset=['locationId'])
-dateTime_df = dateTime_df.drop_duplicates(subset=['dateTimeId'])
-print(f"After removing duplicates: {len(location_df)} unique locations and {len(dateTime_df)} unique datetimes")
 
 # Export node CSVs
 print("Exporting node CSV files...")

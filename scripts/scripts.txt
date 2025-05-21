@@ -212,34 +212,29 @@ WITH
 RETURN roadUserType, speedCategory, avgFatalities, crashCount
 ORDER BY roadUserType, speedCategory;
 
-// Additional Meaningful Query 3: Road type analysis with vehicle involvement and speed limits
-MATCH (c:Crash)-[:OCCURED_AT]->(l:Location)
+// Additional Meaningful Query 3: Age group analysis by crash type and road conditions
+MATCH (p:Person)-[:INVOLVED_IN]->(c:Crash)
+MATCH (c)-[:OCCURED_AT]->(l:Location)
 MATCH (c)-[:HAPPENED_AT]->(dt:DateTime)
 WHERE toInteger(dt.year) >= 2020
 WITH 
-  c.nationalRoadType AS roadType,
+  p.ageGroup AS ageGroup,
+  c.crashType AS crashType,
+  l.nationalRoadType AS roadType,
   CASE
-    WHEN toInteger(c.speedLimit) <= 50 THEN 'Low (≤50 km/h)'
-    WHEN toInteger(c.speedLimit) <= 80 THEN 'Medium (51-80 km/h)'
-    WHEN toInteger(c.speedLimit) <= 110 THEN 'High (81-110 km/h)'
-    ELSE 'Very High (>110 km/h)'
-  END AS speedCategory,
-  CASE
-    WHEN c.busInvolvement = 'Yes' AND c.heavyRigidTruckInvolvement = 'Yes' THEN 'Both Bus and Truck'
-    WHEN c.busInvolvement = 'Yes' THEN 'Bus Only'
-    WHEN c.heavyRigidTruckInvolvement = 'Yes' THEN 'Truck Only'
-    WHEN c.articulatedTruckInvolvement = 'Yes' THEN 'Articulated Truck'
-    ELSE 'Other Vehicles'
-  END AS vehicleType,
+    WHEN dt.timeOfDay IN ['Morning', 'Afternoon'] THEN 'Day'
+    WHEN dt.timeOfDay IN ['Evening', 'Night'] THEN 'Night'
+    ELSE 'Other'
+  END AS timeOfDay,
   COUNT(c) AS crashCount,
   AVG(toInteger(c.numberFatalities)) AS avgFatalities
 RETURN 
+  ageGroup,
+  crashType,
   roadType,
-  speedCategory,
-  vehicleType,
+  timeOfDay,
   crashCount,
-  ROUND(avgFatalities, 2) AS averageFatalities,
-  ROUND(100.0 * crashCount / SUM(crashCount) OVER (PARTITION BY roadType), 2) AS percentageOfRoadType
+  ROUND(avgFatalities, 2) AS averageFatalities
 ORDER BY 
-  roadType,
+  ageGroup,
   crashCount DESC;

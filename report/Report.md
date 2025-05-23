@@ -169,6 +169,7 @@ crash_dateTime_rel.to_csv(f"{output_dir}/crash_dateTime_rel.csv", index=False)
 ```
 
 This transformation process ensures that:
+
 - Each node type has appropriate properties as defined in our graph design
 - Relationships between nodes are properly established
 - Data integrity is maintained through unique identifiers
@@ -219,6 +220,7 @@ in the import folder.
 ### 2.3.3 Relationship Creation
 
 This relationship creation process:
+
 1. Loads relationship data from the `person_crash_rel.csv` file
 2. Matches existing Person and Crash nodes using their unique identifiers
 3. Creates the INVOLVED_IN relationship between matched nodes
@@ -233,6 +235,7 @@ Relationships (such as `INVOLVED_IN`, `OCCURRED_AT`, and `HAPPENED_AT`) were cre
 ### 2.3.4 Index Creation
 
 Indexes are crucial for query performance optimisation. They work by creating a sorted data structure for frequently queried properties, enabling faster lookups when filtering or matching on these properties. For example:
+
 - The `crash_speed_idx` index optimises queries that filter crashes by speed limit
 - The `location_state_idx` index speeds up queries that search for crashes in specific states
 - The `person_age_group_idx` index improves performance when analysing crashes by age groups
@@ -241,21 +244,25 @@ Indexes are crucial for query performance optimisation. They work by creating a 
 *Figure 5: Creating indexes in Neo4j*
 
 These indexes are particularly important for our query requirements, such as:
+
 - Finding crashes in specific states (using `location_state_idx`)
 - Analysing crashes by age groups (using `person_age_group_idx`)
 - Filtering crashes by speed limits (using `crash_speed_idx`)
 - Identifying crashes involving specific vehicle types (using `crash_articulated_idx`)
+
+\newpage
 
 ## 2.4 Database Summary After ETL
 
 After completing the ETL and load process, we verified the database structure and content using Neo4j's built-in information commands. The following screenshot summarises the resulting graph:
 
 
-![Neo4j Database Info](../images/neo4j-info.png){ width=30% } \newline
+![Neo4j Database Info](../images/neo4j-info.png){ width=40% } \newline
 *Figure 6: Overview of the graph database after ETL and load, showing the number of nodes, relationships, labels, and relationship types.*
 
 This confirms that the data was successfully imported and the graph structure matches our intended design, with all node types, relationships, and properties correctly established.
 
+\newpage
 
 ## 3. Query Implementation and Results
 
@@ -268,6 +275,8 @@ We implemented all required queries (A-G) with optimisations for performance. He
 
 ![Query A Results](../images/neo4j-query-A.png)
 *Figure 7: Results showing crashes in WA with articulated trucks and multiple fatalities*
+
+\newpage
 
 2. **Question B**: Motorcycle rider age ranges during holidays
 
@@ -300,6 +309,8 @@ To enable this type of query, we would need to modify our graph structure. A pot
 
 Given the interesting nature of this limitation, we explore an alternative approach using path length 4 in Section 4: Graph Data Science Application.
 
+\newpage
+
 7. **Question G**: Weekday fatal crashes involving pedestrians
 
 ![Query G Results](../images/neo4j-query-G.png)
@@ -314,24 +325,33 @@ Key findings from these queries include:
 - Geographical relationships between crash locations
 - Impact of time and road conditions on crash frequency
 
+\newpage
+
 ## 3.2 Additional Meaningful Queries
 We implemented three additional meaningful queries to gain deeper insights into the crash data:
 
 1. **Elderly Driver Analysis**
+
 Research Question: "What are the most dangerous times of day for elderly drivers (aged 65 and above) in urban versus rural areas, and how does this vary by location type?"
 
 ![Elderly Driver Analysis](../images/neo4j-additionalquery-1.png)
 *Figure 14: Analysis of crash patterns for elderly drivers in urban vs rural areas*
 *Note: For the complete query, please refer to the full code in Scripts.txt*
 
+\newpage
+
 2. **Speed Limit Impact Analysis**
+
 Research Question: "How do different speed limits affect fatality rates across various types of road users, and what patterns emerge in the relationship between speed limits and crash severity?"
 
 ![Speed Limit Analysis](../images/neo4j-additionalquery-2.png)
 *Figure 15: Analysis of fatality rates across different speed limits and road user types*
 *Note: For the complete query, please refer to the full code in Scripts.txt*
 
+\newpage
+
 3. **Age Group and Road Conditions Analysis**
+
 Research Question: "How do different age groups experience crashes across various road types and conditions, and what patterns emerge in the relationship between age, crash type, and time of day?"
 
 ![Age Group Analysis](../images/neo4j-additionalquery-3.png)
@@ -350,22 +370,25 @@ Graph Data Science (GDS) enables the discovery of complex patterns within graph-
 
 BFS is particularly well-suited for finding the shortest path between nodes in an unweighted graph. In our Neo4j implementation, BFS powers the path-finding queries that connect LGAs:
 
-![BFS Results](../images/neo4j-query-F4.png)
+![BFS Results](../images/neo4j-query-F4.png){ width=70% }
+
 *Figure 17: Path analysis showing Location → Crash → DateTime → Crash → Location traversal pattern. This demonstrates how crashes at the same time connect different locations, without involving Person nodes (which are unique to each crash).*
 
 
-This query systematically explores paths of exactly 4 relationships between Location nodes, revealing how different LGAs are connected through the crash network.
 
+
+This query systematically explores paths of exactly 4 relationships between Location nodes, revealing how different LGAs are connected through the crash network. The connections occur via DateTime nodes, which are not unique in our data model.
+
+This non-uniqueness of DateTime nodes is actually crucial - if we had made DateTime nodes unique, LGAs would not be connected at all, resulting in an unconnected graph. Our graph structure enforces a minimum path length of 4 between LGAs, which explains why Query F (finding paths of length 3) returned no results.
+
+The traversal follows the pattern: LGA1 → Crash1 → DateTime → Crash2 → LGA2. This pattern reveals how crashes occurring at the same time, in the same month and year, connect different geographic areas, exposing temporal-spatial crash patterns across location boundaries.
 
 ![BFS Results](../images/neo4j-query-F4_30.png)
 *Figure 18: Extended path analysis revealing 30 connections between LGAs. This shows several disconnected clusters, with the largest spanning 35 nodes and the smallest containing just 5 nodes.*
 
-Our graph structure enforces a minimum path length of 4 between LGAs, explaining why Query F (finding paths of length 3) returned no results. The traversal follows the pattern:
-```
-LGA1 → Crash1 → DateTime → Crash2 → LGA2
-```
+As we return more results, we can see how the DateTime node is key to creating connected components in our grpah
 
-This shows how crashes occurring at the same time connect different geographic areas, revealing temporal-spatial crash patterns across location boundaries.
+
 
 ## 4.2 Real-World Applications of BFS in Road Safety
 
@@ -385,19 +408,25 @@ Applying BFS to our road crash graph model enables several practical insights fo
 
 ## 4.3 Other Relevant Graph Algorithms
 
-While BFS was our primary algorithm, other approaches could provide additional insights:
+While BFS was our primary algorithm, several other graph algorithms could provide valuable insights into our road crash data:
 
-- **Community Detection:** Would identify clusters of LGAs with similar crash patterns, revealing regional safety issues
-- **Centrality Measures:** Could identify which locations act as "hubs" in the crash network
-- **Path Finding with Weights:** If crash severity or frequency were added as edge weights, weighted algorithms could find paths connecting LGAs through the most severe incidents
+- **Depth-First Search (DFS):** 
+  Could be used to explore crash patterns in depth within specific regions. This would be particularly useful for analysing crash chains within a single LGA, where we want to understand the full context of location-related incidents before moving to other regions (Cormen et al., 2022).
 
-**Summary**
+- **A-Star Algorithm:**
+  With appropriate heuristics based on crash severity, frequency, road conditions, traffic volume, and historical accident data, A* could find optimal paths between LGAs that minimise risk factors. This would be valuable for identifying the most dangerous routes between locations and could incorporate real-time data like weather conditions and traffic congestion (Hart et al., 1968).
 
-BFS allows us to move beyond isolated incident analysis to a network-based understanding of road safety. The disconnected clusters in our results suggest distinct geographic regions with separate crash patterns, while the connected paths highlight how incidents relate across jurisdictions. This approach supports more informed decision-making for cross-boundary safety interventions and policy development.
+- **Travelling Salesman Problem (TSP):**
+  With modifications to consider crash severity as "costs," TSP algorithms could help optimise routes for safety inspectors or emergency response teams, ensuring they visit high-risk areas efficiently (Applegate et al., 2006).
+
+These algorithms could be implemented using Neo4j's Graph Data Science library, which provides optimised implementations for many of these approaches.
+
+## References
+
+Applegate, D. L., Bixby, R. E., Chvátal, V., & Cook, W. J. (2006). The travelling salesman problem: A computational study. Princeton University Press.
 
 
+Hart, P. E., Nilsson, N. J., & Raphael, B. (1968). A formal basis for the heuristic determination of minimum cost paths. IEEE Transactions on Systems Science and Cybernetics, 4(2), 100-107.
 
-## 5. Conclusion
 
-The implementation demonstrates the effectiveness of graph databases in handling complex relationships in crash data. The design choices and optimisations have resulted in efficient query performance and meaningful insights into road safety patterns.
 

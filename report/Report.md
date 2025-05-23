@@ -12,42 +12,42 @@ Our graph database follows the property graph model, providing an optimal struct
 
 1. **Crash Nodes**
    - **Design Choice**: Central hub in our graph model
-   - **Implementation**: Based on 'Crash ID' with crash-specific attributes
+   - **Implementation**: Based on 'Crash ID' with crash-specific attributes such as crash type, number of fatalities, vehicle involvements, speed limit and road type.
    - **Strengths**: 
      - Effectively centralises multiple vehicle/person involvements in a single incident
      - Matches the source data structure where crashes are the primary events
    - **Limitations**: 
-     - Creates a strict star topology that makes direct LGA-to-LGA paths impossible
-     - Introduces an unavoidable additional hop in path traversals
+     - Creates a strict star topology that makes direct child-child node paths impossible
+     - Introduces an unavoidable additional hop over the crash nodes in path traversals
 
 2. **Person Nodes**
-   - **Design Choice**: Independent nodes rather than crash properties
-   - **Implementation**: Using original 'ID' as personId
+   - **Design Choice**: Independent nodes with one or more per crash
+   - **Implementation**: Using original 'ID' as personId (IDs are unique to people in the original data)
    - **Strengths**: 
      - Preserves the 1:1 relationship in our source data between person and crash
      - Supports demographic filtering (e.g., crashes involving young male drivers)
    - **Limitations**: 
-     - Limited value for our dataset where each person appears only once
-     - Increases path length when querying location-to-location connections
+     - Limited value in our model because the source data only captures one crash per person, preventing analysis of repeat crash involvement.
 
 3. **Location Nodes**
    - **Design Choice**: Composite nodes capturing geographic hierarchy
    - **Implementation**: Combined state, remoteness, SA4 and LGA identifiers
    - **Strengths**: 
-     - Captures Australia's geographic administrative structure
+     - Unique to LGA's
      - Allows filtering by various geographic levels (state vs. local)
    - **Limitations**: 
-     - **Path queries between LGAs require minimum 4 hops** (LGA→Crash→LGA), making Question F impossible as specified
+     - **Path queries between LGAs require minimum 4 hops** (LGA1→Crash1→Datetime→Crash2→LGA2), making Question F impossible as specified
      - Composite keys created implementation complexity in our ETL process
 
 4. **DateTime Nodes**
    - **Design Choice**: Separate temporal dimension nodes
-   - **Implementation**: Composite time identifiers from month, year and time
+   - **Implementation**: Composite time identifiers from month, year, time and various time period catagorical properties
    - **Strengths**: 
-     - Supports time-based analysis (particularly useful for holiday period analysis)
+     - Supports time-based analysis (particularly useful for holiday period and time of day analysis)
      - Efficiently represents recurring temporal patterns in Australian crash data
+     - Allows our graphs to be conencted via DateTime as well as LGA
    - **Limitations**: 
-     - Source data lacks exact dates, limiting granularity
+     - DateTime nodes are not fully unique - they are only unique based on the combination of Month, Year, and Time. This means that crashes occurring at the same time on different days within the same month and year will share the same DateTime node. This limitation stems from the source data not including the day of month, which would enable complete uniqueness. While including Dayweek would increase query granularity, it still would not make these nodes fully unique to a specific date and time.
      - Adds another traversal hop in multi-dimensional queries
 
 ## 1.2 Relationship Design
@@ -55,7 +55,7 @@ Our graph database follows the property graph model, providing an optimal struct
 Our relationships reflect natural connections in the domain:
 
 - **INVOLVED_IN**: Person → Crash (based on 'Crash ID' linking to person records)
-- **OCCURRED_AT**: Crash → Location (using composite location identifier)
+- **OCCURRED_AT**: Crash → Location (using composite location identifier - unique LGA's)
 - **HAPPENED_AT**: Crash → DateTime (using composite datetime identifier)
 
 This structure optimises both traversal performance and query flexibility, particularly for pattern-matching and path-finding operations that would be cumbersome in relational databases.
@@ -288,18 +288,26 @@ We implemented all required queries (A-G) with optimisations for performance. He
 
 ![Query E Results](../images/neo4j-query-E.png)
 *Figure 11: Analysis of fatal crashes during peak hours across SA4 regions*
+*Note: For the complete query, please refer to the full code in Scripts.txt*
 
 6. **Question F**: Paths of length 3 between LGAs
 
 ![Query F Results](../images/neo4j-query-F.png)
 *Figure 12: Path analysis showing connections between different LGAs*
+The query returns no results, which aligns with our graph design shown in Figure 1. This outcome is expected because our current implementation only connects locations (LGAs) to crashes, and crashes themselves are not interconnected. Therefore, it's impossible to find a path of length 3 between any two location nodes.
+
+To enable this type of query, we would need to modify our graph structure. A potential solution would be to introduce a state node that connects to both crashes and LGAs. This would create a path of length 3 between LGAs through the state and crash nodes.
+
+Given the interesting nature of this limitation, we explore an alternative approach using path length 4 in Section 4: Graph Data Science Application.
 
 7. **Question G**: Weekday fatal crashes involving pedestrians
 
 ![Query G Results](../images/neo4j-query-G.png)
 *Figure 13: Analysis of weekday fatal crashes involving pedestrians with specific vehicle types and speed limits*
+*Note: For the complete query, please refer to the full code in Scripts.txt*
 
 Key findings from these queries include:
+
 - The distribution of crashes across different regions and time periods
 - Patterns in crash severity and vehicle involvement
 - Demographic trends in crash victims
@@ -314,18 +322,21 @@ Research Question: "What are the most dangerous times of day for elderly drivers
 
 ![Elderly Driver Analysis](../images/neo4j-additionalquery-1.png)
 *Figure 14: Analysis of crash patterns for elderly drivers in urban vs rural areas*
+*Note: For the complete query, please refer to the full code in Scripts.txt*
 
 2. **Speed Limit Impact Analysis**
 Research Question: "How do different speed limits affect fatality rates across various types of road users, and what patterns emerge in the relationship between speed limits and crash severity?"
 
 ![Speed Limit Analysis](../images/neo4j-additionalquery-2.png)
 *Figure 15: Analysis of fatality rates across different speed limits and road user types*
+*Note: For the complete query, please refer to the full code in Scripts.txt*
 
 3. **Age Group and Road Conditions Analysis**
 Research Question: "How do different age groups experience crashes across various road types and conditions, and what patterns emerge in the relationship between age, crash type, and time of day?"
 
 ![Age Group Analysis](../images/neo4j-additionalquery-3.png)
 *Figure 16: Analysis of crash patterns across different age groups, road types, and times of day*
+*Note: For the complete query, please refer to the full code in Scripts.txt*
 
 \newpage
 
